@@ -6,45 +6,40 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
-const { type } = require("os");
-const { error } = require("console");
+const fs = require("fs");
 
 app.use(express.json());
 app.use(cors());
 
-// Database Connection with MongoDB - Updated for Render deployment
+// Ensure upload directory exists
+const uploadDir = "./upload/images";
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Database Connection with MongoDB - Fixed connection options
 const connectDB = async () => {
     try {
-        const mongoURI = process.env.MONGODB_URI || 
-            "mongodb+srv://ayve012:7PmEEE5Oqq0Fk84h@cluster0.h9nloic.mongodb.net/e-commerce?retryWrites=true&w=majority&appName=Cluster0";
-        
-        await mongoose.connect(mongoURI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 10000, // 10 seconds
-            socketTimeoutMS: 45000, // 45 seconds
-            maxPoolSize: 10,
-            bufferCommands: false,
-            bufferMaxEntries: 0,
-            // SSL options for Render deployment
-            ssl: true,
-            sslValidate: true,
-        });
-        
+        await mongoose.connect(
+            process.env.MONGODB_URI || "mongodb+srv://ayve012:7PmEEE5Oqq0Fk84h@cluster0.h9nloic.mongodb.net/e-commerce",
+            {
+                useNewUrlParser: true,
+                useUnifiedTopology: true,
+            }
+        );
         console.log("MongoDB Connected Successfully");
     } catch (error) {
         console.error("MongoDB Connection Error:", error.message);
-        // Retry connection after 5 seconds
-        setTimeout(connectDB, 5000);
+        process.exit(1);
     }
 };
 
 // Connect to database
 connectDB();
 
-// Handle MongoDB connection events
+// Handle connection events
 mongoose.connection.on('connected', () => {
-    console.log('Mongoose connected to MongoDB Atlas');
+    console.log('Mongoose connected to MongoDB');
 });
 
 mongoose.connection.on('error', (err) => {
@@ -55,19 +50,12 @@ mongoose.connection.on('disconnected', () => {
     console.log('Mongoose disconnected');
 });
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-    await mongoose.connection.close();
-    console.log('MongoDB connection closed.');
-    process.exit(0);
-});
-
 // API Creation
 app.get("/", (req, res) => {
     res.send("Express App is Running");
 });
 
-// Image Storage Engine - Updated for production
+// Image Storage Engine
 const storage = multer.diskStorage({
     destination: "./upload/images",
     filename: (req, file, cb) => {
@@ -83,13 +71,9 @@ const upload = multer({ storage: storage });
 // Creating Upload Endpoint for Images
 app.use("/images", express.static("upload/images"));
 app.post("/upload", upload.single("product"), (req, res) => {
-    const baseURL = process.env.NODE_ENV === 'production' 
-        ? `https://${req.get('host')}` 
-        : `http://localhost:${port}`;
-    
     res.json({
         success: 1,
-        image_url: `${baseURL}/images/${req.file.filename}`,
+        image_url: `${req.protocol}://${req.get('host')}/images/${req.file.filename}`,
     });
 });
 
@@ -123,7 +107,7 @@ const Product = mongoose.model("Product", {
         type: Date,
         default: Date.now,
     },
-    avilable: {
+    available: { // Fixed typo: was "avilable"
         type: Boolean,
         default: true,
     },
@@ -246,8 +230,7 @@ app.post("/signup", async (req, res) => {
             },
         };
 
-        const jwtSecret = process.env.JWT_SECRET || "secret_ecom";
-        const token = jwt.sign(data, jwtSecret);
+        const token = jwt.sign(data, process.env.JWT_SECRET || "secret_ecom");
         res.json({
             success: true,
             token,
@@ -256,7 +239,7 @@ app.post("/signup", async (req, res) => {
         console.error("Error during signup:", error);
         res.status(500).json({
             success: false,
-            error: "Failed to register user"
+            error: "Failed to create user"
         });
     }
 });
@@ -273,8 +256,7 @@ app.post("/login", async (req, res) => {
                         id: user.id,
                     },
                 };
-                const jwtSecret = process.env.JWT_SECRET || "secret_ecom";
-                const token = jwt.sign(data, jwtSecret);
+                const token = jwt.sign(data, process.env.JWT_SECRET || "secret_ecom");
                 res.json({
                     success: true,
                     token,
@@ -301,10 +283,10 @@ app.post("/login", async (req, res) => {
 });
 
 // creating endpoint for newCollection data
-app.get("/newcollectioned", async (req, res) => {
+app.get("/newcollection", async (req, res) => {
     try {
-        let producrs = await Product.find({});
-        let newcollection = producrs.slice(1).slice(-8);
+        let products = await Product.find({});
+        let newcollection = products.slice(1).slice(-8);
         console.log("NewCollection Fetched");
         res.send(newcollection);
     } catch (error) {
@@ -341,8 +323,7 @@ const fetchUser = async (req, res, next) => {
         });
     } else {
         try {
-            const jwtSecret = process.env.JWT_SECRET || "secret_ecom";
-            const data = jwt.verify(token, jwtSecret);
+            const data = jwt.verify(token, process.env.JWT_SECRET || "secret_ecom");
             req.user = data.user;
             next();
         } catch (error) {
@@ -403,10 +384,19 @@ app.post('/getcart', fetchUser, async (req, res) => {
     }
 });
 
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received');
+    mongoose.connection.close(() => {
+        console.log('MongoDB connection closed.');
+        process.exit(0);
+    });
+});
+
 app.listen(port, (error) => {
     if (!error) {
         console.log("Server is running on Port " + port);
     } else {
-        console.log("Error" + error);
+        console.log("Error: " + error);
     }
 });
