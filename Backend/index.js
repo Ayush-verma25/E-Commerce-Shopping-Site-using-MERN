@@ -14,7 +14,7 @@ app.use(cors());
 
 // Database Connection with MongoDB
 mongoose.connect(
-    "mongodb+srv://ayve012:1mq44Le4iETZNDEL@cluster0.xtt65.mongodb.net/e-commerce"
+    "mongodb+srv://ayve012:7PmEEE5Oqq0Fk84h@cluster0.h9nloic.mongodb.net/e-commerce"
 );
 
 // APi Creation
